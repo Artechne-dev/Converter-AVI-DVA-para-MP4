@@ -54,8 +54,15 @@ class ConverterGUI(ctk.CTk):
         self.btn_convert.grid(row=5, column=0, columnspan=2, pady=(5, 10))
 
     def _select_input(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo", "*.avi *.mp4 *.mkv *.dav"), ("Todos os Arquivos", "*.*")])
+        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo Suportados", "*.avi *.dva"), ("Todos os Arquivos", "*.*")])
         if file_path:
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext not in [".avi", ".dva"]:
+                self._show_error("Formato inválido. Selecione apenas arquivos .avi ou .dva.")
+                self.input_file.set("")
+                self.output_file.set("")
+                return
+                
             self.input_file.set(file_path)
             suggested_out = os.path.splitext(file_path)[0] + ".mp4"
             self.output_file.set(suggested_out)
