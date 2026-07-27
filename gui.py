@@ -8,7 +8,7 @@ class ConverterGUI(ctk.CTk):
         super().__init__()
         
         self.title("Conversor de Vídeo para MP4")
-        self.geometry("550x300")
+        self.geometry("550x350")
         self.resizable(False, False)
         
         ctk.set_appearance_mode("System")
@@ -17,11 +17,7 @@ class ConverterGUI(ctk.CTk):
         self.input_file = ctk.StringVar()
         self.output_file = ctk.StringVar()
         
-        try:
-            self.converter = VideoConverter()
-        except Exception as e:
-            self._show_error(str(e))
-            self.converter = None
+        self.converter = VideoConverter()
 
         self._build_ui()
         
@@ -53,8 +49,17 @@ class ConverterGUI(ctk.CTk):
         self.btn_convert = ctk.CTkButton(main_frame, text="Converter", command=self._start_conversion, fg_color="#27ae60", hover_color="#2ecc71")
         self.btn_convert.grid(row=5, column=0, columnspan=2, pady=(5, 10))
 
+        self.btn_download = ctk.CTkButton(main_frame, text="Baixar FFmpeg Automático (Necessário)", command=self._start_download, fg_color="#c0392b", hover_color="#e74c3c")
+        self.btn_download.grid(row=6, column=0, columnspan=2, pady=(0, 10))
+
+        if self.converter.has_ffmpeg:
+            self.btn_download.grid_remove()
+        else:
+            self.btn_convert.configure(state="disabled")
+            self._show_error("Conversor indisponível (FFmpeg não encontrado).")
+
     def _select_input(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo Suportados", "*.avi *.dva *.dav"), ("Todos os Arquivos", "*.*")])
+        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo Suportados", "*.avi;*.dva;*.dav"), ("Todos os Arquivos", "*.*")])
         if file_path:
             ext = os.path.splitext(file_path)[1].lower()
             if ext not in [".avi", ".dva", ".dav"]:
@@ -74,7 +79,7 @@ class ConverterGUI(ctk.CTk):
             self.output_file.set(file_path)
 
     def _start_conversion(self):
-        if not self.converter:
+        if not self.converter.has_ffmpeg:
             self._show_error("Conversor indisponível (FFmpeg não encontrado).")
             return
             
@@ -106,7 +111,38 @@ class ConverterGUI(ctk.CTk):
         self.after(0, lambda: self._show_error(f"Erro: {err_msg}"))
         
     def _show_error(self, msg):
-        if hasattr(self, 'btn_convert'):
+        if hasattr(self, 'btn_convert') and self.converter.has_ffmpeg:
             self.btn_convert.configure(state="normal", text="Converter")
         if hasattr(self, 'lbl_status'):
             self.lbl_status.configure(text=msg[:120] + "..." if len(msg) > 120 else msg, text_color="#c0392b")
+
+    def _start_download(self):
+        self.btn_download.configure(state="disabled", text="Iniciando...")
+        self.lbl_status.configure(text="Conectando...", text_color="#d35400")
+        
+        self.converter.download_ffmpeg(
+            progress_callback=self._on_download_progress,
+            completion_callback=self._on_download_complete,
+            error_callback=self._on_download_error
+        )
+
+    def _on_download_progress(self, msg):
+        self.after(0, lambda: self.lbl_status.configure(text=msg, text_color="#d35400"))
+        
+    def _on_download_complete(self):
+        def _handle():
+            self.converter._check_ffmpeg() # Re-check
+            if self.converter.has_ffmpeg:
+                self.btn_download.grid_remove()
+                self.btn_convert.configure(state="normal")
+                self.lbl_status.configure(text="FFmpeg instalado com sucesso!", text_color="#27ae60")
+            else:
+                self._show_error("Falha ao configurar o FFmpeg após o download.")
+                self.btn_download.configure(state="normal", text="Baixar FFmpeg Automático")
+        self.after(0, _handle)
+        
+    def _on_download_error(self, err_msg):
+        def _handle():
+            self._show_error(f"Erro no download: {err_msg}")
+            self.btn_download.configure(state="normal", text="Tentar Novamente")
+        self.after(0, _handle)
