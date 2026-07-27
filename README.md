@@ -19,15 +19,14 @@ A forma mais fácil de utilizar o conversor é baixando o arquivo executável pr
 
 ---
 
-## 🛠️ Detalhes Técnicos e Tamanho do Executável
+## 🛠️ Detalhes Técnicos e Requisitos
 
-### Por que o executável possui dezenas de megabytes?
-Para garantir a máxima portabilidade e conveniência (a filosofia "clicou, rodou"), o executável empacota internamente:
-- O interpretador completo do Python.
-- As bibliotecas de interface gráfica (CustomTkinter e Tcl/Tk).
-- O binário do **FFmpeg**, responsável pela codificação de vídeo.
+### O FFmpeg
+Para manter o executável extremamente leve (cerca de 20MB ao invés de 100MB+), optamos por não embutir o motor de conversão de vídeo dentro do arquivo.
+O aplicativo **exige** que o `ffmpeg` esteja instalado no seu computador e adicionado às variáveis de ambiente (PATH).
+Se ele não for detectado, o aplicativo irá avisá-lo e sugerir o download.
 
-Esse empacotamento completo eleva o tamanho do arquivo, mas remove completamente o peso de manutenção e configuração das costas do usuário.
+[Download oficial do FFmpeg](https://ffmpeg.org/download.html)
 
 ---
 

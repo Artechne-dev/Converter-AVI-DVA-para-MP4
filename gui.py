@@ -54,11 +54,11 @@ class ConverterGUI(ctk.CTk):
         self.btn_convert.grid(row=5, column=0, columnspan=2, pady=(5, 10))
 
     def _select_input(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo Suportados", "*.avi *.dva"), ("Todos os Arquivos", "*.*")])
+        file_path = filedialog.askopenfilename(filetypes=[("Arquivos de Vídeo Suportados", "*.avi *.dva *.dav"), ("Todos os Arquivos", "*.*")])
         if file_path:
             ext = os.path.splitext(file_path)[1].lower()
-            if ext not in [".avi", ".dva"]:
-                self._show_error("Formato inválido. Selecione apenas arquivos .avi ou .dva.")
+            if ext not in [".avi", ".dva", ".dav"]:
+                self._show_error("Formato inválido. Selecione apenas arquivos .avi, .dva ou .dav.")
                 self.input_file.set("")
                 self.output_file.set("")
                 return

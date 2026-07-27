@@ -5,7 +5,7 @@ a = Analysis(
     ['c:/GitHub/Converter-AVI-MP4/main.py'],
     pathex=[],
     binaries=[],
-    datas=[('ffmpeg', 'ffmpeg'), ('C:\\GitHub\\Converter-AVI-MP4\\.venv\\Lib\\site-packages\\customtkinter', 'customtkinter/')],
+    datas=[('C:\\GitHub\\Converter-AVI-MP4\\.venv\\Lib\\site-packages\\customtkinter', 'customtkinter/')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

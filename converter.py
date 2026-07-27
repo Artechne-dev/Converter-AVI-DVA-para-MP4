@@ -9,12 +9,8 @@ class VideoConverter:
 
     def _check_ffmpeg(self):
         self.ffmpeg_path = "ffmpeg"
-        local_ffmpeg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg", "ffmpeg.exe")
-        
-        if os.path.exists(local_ffmpeg):
-            self.ffmpeg_path = local_ffmpeg
-        elif not shutil.which("ffmpeg"):
-            raise FileNotFoundError("FFmpeg não encontrado. O script start.ps1 deve baixá-lo automaticamente ou deve estar no seu PATH.")
+        if not shutil.which("ffmpeg"):
+            raise FileNotFoundError("FFmpeg não encontrado no sistema.\nPara que o conversor funcione, instale o FFmpeg e adicione-o ao PATH.\nDownload: https://ffmpeg.org/download.html")
 
     def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None):
         def _run():
