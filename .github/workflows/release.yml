@@ -33,7 +33,7 @@ jobs:
           
       - name: Build Executable
         run: |
-          $CTK_PATH = (python -c "import site; print(site.getsitepackages()[0])") + "\customtkinter"
+          $CTK_PATH = python -c "import customtkinter, os; print(os.path.dirname(customtkinter.__file__))"
           pyinstaller --noconfirm --onefile --windowed --add-data "$CTK_PATH;customtkinter/" --icon="icon.ico" --name Converter-AVI-MP4 main.py
           
       - name: Move latest tag
