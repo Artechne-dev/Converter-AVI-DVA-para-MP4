@@ -80,7 +80,7 @@ class VideoConverter:
         thread = threading.Thread(target=_run)
         thread.start()
 
-    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None):
+    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None, ultra_fast=False):
         if input_path.lower().endswith(".mp4") and output_path.lower().endswith(".mp4"):
             if error_callback:
                 error_callback("Arquivo de origem já é MP4. Conversão bloqueada.")
@@ -93,9 +93,6 @@ class VideoConverter:
 
         def _run():
             try:
-                if encoder_callback:
-                    encoder_callback("Detectando aceleradores...")
-                
                 best_encoder = "libx264"
                 encoders_to_test = {
                     "h264_nvenc": "NVIDIA",
@@ -103,13 +100,18 @@ class VideoConverter:
                     "h264_amf": "AMD"
                 }
                 
-                for enc, name in encoders_to_test.items():
+                use_copy = False
+                if ultra_fast:
+                    if encoder_callback:
+                        encoder_callback("Testando cópia direta (Ultra Rápida)...")
+                    
                     test_command = [
                         self.ffmpeg_path,
                         "-y",
-                        "-f", "lavfi",
-                        "-i", "color=c=black:s=64x64:d=0.1",
-                        "-c:v", enc,
+                        "-i", input_path,
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-t", "0.5",
                         "-f", "null",
                         "-"
                     ]
@@ -122,14 +124,48 @@ class VideoConverter:
                         )
                         test_process.communicate()
                         if test_process.returncode == 0:
-                            best_encoder = enc
-                            break
+                            use_copy = True
                     except Exception:
                         pass
                 
-                encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                if use_copy:
+                    best_encoder = "copy"
+                    encoder_name = "Cópia Direta"
+                else:
+                    if encoder_callback:
+                        encoder_callback("Detectando aceleradores...")
+                    
+                    for enc, name in encoders_to_test.items():
+                        test_command = [
+                            self.ffmpeg_path,
+                            "-y",
+                            "-f", "lavfi",
+                            "-i", "color=c=black:s=64x64:d=0.1",
+                            "-c:v", enc,
+                            "-f", "null",
+                            "-"
+                        ]
+                        try:
+                            test_process = subprocess.Popen(
+                                test_command,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                            )
+                            test_process.communicate()
+                            if test_process.returncode == 0:
+                                best_encoder = enc
+                                break
+                        except Exception:
+                            pass
+                    
+                    encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                
                 if encoder_callback:
-                    encoder_callback(f"Usando {encoder_name} ({best_encoder})...")
+                    if best_encoder == "copy":
+                        encoder_callback("Usando Cópia Direta (Ultra Rápida)...")
+                    else:
+                        encoder_callback(f"Usando {encoder_name} ({best_encoder})...")
                 
                 command = [
                     self.ffmpeg_path,

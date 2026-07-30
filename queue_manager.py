@@ -38,11 +38,12 @@ class QueueManager:
             self.items.clear()
             self.current_index = -1
             
-    def start_conversion(self):
+    def start_conversion(self, ultra_fast=False):
         with self._lock:
             if self.is_running:
                 return
             self.is_running = True
+            self.ultra_fast = ultra_fast
             self.queue_start_time = time.time()
             
         thread = threading.Thread(target=self._process_queue)
@@ -104,7 +105,8 @@ class QueueManager:
                 completion_callback=on_complete,
                 error_callback=on_error,
                 encoder_callback=on_encoder,
-                progress_callback=on_progress
+                progress_callback=on_progress,
+                ultra_fast=self.ultra_fast
             )
             
             event.wait()

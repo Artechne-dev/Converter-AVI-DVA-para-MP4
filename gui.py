@@ -38,6 +38,7 @@ class ConverterGUI(ctk.CTk):
         self.row_widgets = {}
         self.dest_folder = ctk.StringVar()
         self.same_folder_var = ctk.BooleanVar(value=True)
+        self.ultra_fast_var = ctk.BooleanVar(value=True)
         
         self._build_ui()
         
@@ -67,8 +68,16 @@ class ConverterGUI(ctk.CTk):
         self.btn_dest = ctk.CTkButton(out_frame, text="Selecionar", width=80, state="disabled", command=self._select_dest_folder)
         self.btn_dest.grid(row=1, column=2, padx=(5, 10), pady=(0, 10))
         
+        self.chk_ultra_fast = ctk.CTkCheckBox(
+            out_frame,
+            text="Ativar Cópia Direta Ultra Rápida (Copia streams sem reprocessar quando possível)",
+            variable=self.ultra_fast_var,
+            font=("Arial", 11, "bold")
+        )
+        self.chk_ultra_fast.grid(row=2, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="w")
+        
         # Middle Frame: Scrollable queue list
-        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=270, label_text="Fila de Conversão")
+        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=250, label_text="Fila de Conversão")
         self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Bottom Frame: Status and Controls
@@ -217,6 +226,7 @@ class ConverterGUI(ctk.CTk):
         self.btn_add.configure(state="disabled")
         self.btn_clear.configure(state="disabled")
         self.chk_same_folder.configure(state="disabled")
+        self.chk_ultra_fast.configure(state="disabled")
         self.btn_dest.configure(state="disabled")
         self.lbl_status.configure(text="Processando fila de conversão...", text_color="#d35400")
         
@@ -230,7 +240,7 @@ class ConverterGUI(ctk.CTk):
                     if dest:
                         item.output_path = os.path.join(dest, os.path.basename(os.path.splitext(item.input_path)[0] + ".mp4"))
                         
-        self.queue_manager.start_conversion()
+        self.queue_manager.start_conversion(ultra_fast=self.ultra_fast_var.get())
         
     def _cancel_conversion(self):
         self.queue_manager.is_running = False
@@ -252,6 +262,7 @@ class ConverterGUI(ctk.CTk):
         self.btn_add.configure(state="normal")
         self.btn_clear.configure(state="normal")
         self.chk_same_folder.configure(state="normal")
+        self.chk_ultra_fast.configure(state="normal")
         self._toggle_dest_folder()
         
         self.progress_bar.set(1.0)
