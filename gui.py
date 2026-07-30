@@ -10,7 +10,7 @@ class ConverterGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        self.title("Conversor de Vídeo para MP4 (Lote) - v1.2")
+        self.title("Conversor de Vídeo para MP4 (Lote) - v1.3")
         self.geometry("750x600")
         self.resizable(False, False)
         
@@ -40,6 +40,10 @@ class ConverterGUI(ctk.CTk):
         self.dest_folder = ctk.StringVar()
         self.same_folder_var = ctk.BooleanVar(value=True)
         self.ultra_fast_var = ctk.BooleanVar(value=True)
+        
+        import queue
+        self.gui_queue = queue.Queue()
+        self._poll_gui_queue()
         
         self._build_ui()
         
@@ -217,8 +221,7 @@ class ConverterGUI(ctk.CTk):
         }
         
     def _on_item_updated(self, item):
-        self.after(0, lambda: self._update_row_ui(item))
-        self.after(0, self._update_overall_progress_ui)
+        self.gui_queue.put(("item_updated", item))
         
     def _update_row_ui(self, item):
         widgets = self.row_widgets.get(item.id)
@@ -302,7 +305,28 @@ class ConverterGUI(ctk.CTk):
         self._on_queue_finished()
         
     def _on_queue_finished(self):
-        self.after(0, self._handle_queue_finished)
+        self.gui_queue.put(("queue_finished",))
+        
+    def _poll_gui_queue(self):
+        import queue
+        try:
+            while True:
+                msg = self.gui_queue.get_nowait()
+                msg_type = msg[0]
+                
+                if msg_type == "item_updated":
+                    item = msg[1]
+                    self._update_row_ui(item)
+                    self._update_overall_progress_ui()
+                elif msg_type == "queue_finished":
+                    self._handle_queue_finished()
+                    
+                self.gui_queue.task_done()
+        except queue.Empty:
+            pass
+            
+        # Re-schedule polling every 50ms
+        self.after(50, self._poll_gui_queue)
         
     def _handle_queue_finished(self):
         self.btn_convert.configure(text="Converter", fg_color="#27ae60", hover_color="#2ecc71")
