@@ -10,7 +10,7 @@ class ConverterGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        self.title("Conversor de Vídeo para MP4 (Lote)")
+        self.title("Conversor de Vídeo para MP4 (Lote) - v1.2")
         self.geometry("750x600")
         self.resizable(False, False)
         
