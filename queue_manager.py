@@ -72,6 +72,8 @@ class QueueManager:
                 
             event = threading.Event()
             
+            encoder_cache = ["Detectando..."]
+            
             def on_complete():
                 item.status = "Concluído"
                 item.progress_msg = "Concluído"
@@ -83,7 +85,13 @@ class QueueManager:
                 event.set()
                 
             def on_encoder(msg):
+                encoder_cache[0] = msg
                 item.progress_msg = msg
+                if self.on_item_updated:
+                    self.on_item_updated(item)
+                    
+            def on_progress(msg):
+                item.progress_msg = f"{encoder_cache[0]} | {msg}"
                 if self.on_item_updated:
                     self.on_item_updated(item)
                     
@@ -92,7 +100,8 @@ class QueueManager:
                 output_path=item.output_path,
                 completion_callback=on_complete,
                 error_callback=on_error,
-                encoder_callback=on_encoder
+                encoder_callback=on_encoder,
+                progress_callback=on_progress
             )
             
             event.wait()

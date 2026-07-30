@@ -150,16 +150,52 @@ class VideoConverter:
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    encoding='utf-8',
+                    errors='ignore',
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
                 )
                 self.current_process = process
                 
-                _, stderr = process.communicate()
+                import re
+                import time
+                
+                total_seconds = None
+                start_time = time.time()
+                stderr_buffer = []
+                
+                for line in iter(process.stderr.readline, ''):
+                    stderr_buffer.append(line)
+                    
+                    if total_seconds is None:
+                        dur_match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})", line)
+                        if dur_match:
+                            hh, mm, ss, ms = map(int, dur_match.groups())
+                            total_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
+                    
+                    prog_match = re.search(r"time=\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})", line)
+                    if prog_match and total_seconds:
+                        hh, mm, ss, ms = map(int, prog_match.groups())
+                        current_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
+                        
+                        percent = min(100.0, (current_seconds / total_seconds) * 100.0)
+                        elapsed = time.time() - start_time
+                        if current_seconds > 0:
+                            eta = max(0.0, (elapsed / current_seconds) * (total_seconds - current_seconds))
+                            eta_min = int(eta // 60)
+                            eta_sec = int(eta % 60)
+                            eta_str = f"{eta_min:02d}:{eta_sec:02d}"
+                            
+                            if progress_callback:
+                                progress_callback(f"{percent:.1f}% (Restam {eta_str})")
+                                
+                process.wait()
                 self.current_process = None
                 
                 if process.returncode != 0:
                     if error_callback:
-                        error_callback(f"Erro na conversão ({best_encoder}): {stderr.decode('utf-8', errors='ignore')}")
+                        err_text = "".join(stderr_buffer)
+                        error_callback(f"Erro na conversão ({best_encoder}): {err_text}")
                     return
 
                 if completion_callback:
