@@ -80,7 +80,7 @@ class VideoConverter:
         thread = threading.Thread(target=_run)
         thread.start()
 
-    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None):
+    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None, ultra_fast=False):
         if input_path.lower().endswith(".mp4") and output_path.lower().endswith(".mp4"):
             if error_callback:
                 error_callback("Arquivo de origem já é MP4. Conversão bloqueada.")
@@ -93,9 +93,6 @@ class VideoConverter:
 
         def _run():
             try:
-                if encoder_callback:
-                    encoder_callback("Detectando aceleradores...")
-                
                 best_encoder = "libx264"
                 encoders_to_test = {
                     "h264_nvenc": "NVIDIA",
@@ -103,13 +100,18 @@ class VideoConverter:
                     "h264_amf": "AMD"
                 }
                 
-                for enc, name in encoders_to_test.items():
+                use_copy = False
+                if ultra_fast:
+                    if encoder_callback:
+                        encoder_callback("Testando cópia direta (Ultra Rápida)...")
+                    
                     test_command = [
                         self.ffmpeg_path,
                         "-y",
-                        "-f", "lavfi",
-                        "-i", "color=c=black:s=64x64:d=0.1",
-                        "-c:v", enc,
+                        "-i", input_path,
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-t", "0.5",
                         "-f", "null",
                         "-"
                     ]
@@ -122,14 +124,48 @@ class VideoConverter:
                         )
                         test_process.communicate()
                         if test_process.returncode == 0:
-                            best_encoder = enc
-                            break
+                            use_copy = True
                     except Exception:
                         pass
                 
-                encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                if use_copy:
+                    best_encoder = "copy"
+                    encoder_name = "Cópia Direta"
+                else:
+                    if encoder_callback:
+                        encoder_callback("Detectando aceleradores...")
+                    
+                    for enc, name in encoders_to_test.items():
+                        test_command = [
+                            self.ffmpeg_path,
+                            "-y",
+                            "-f", "lavfi",
+                            "-i", "color=c=black:s=64x64:d=0.1",
+                            "-c:v", enc,
+                            "-f", "null",
+                            "-"
+                        ]
+                        try:
+                            test_process = subprocess.Popen(
+                                test_command,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                            )
+                            test_process.communicate()
+                            if test_process.returncode == 0:
+                                best_encoder = enc
+                                break
+                        except Exception:
+                            pass
+                    
+                    encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                
                 if encoder_callback:
-                    encoder_callback(f"Usando {encoder_name} ({best_encoder})...")
+                    if best_encoder == "copy":
+                        encoder_callback("Usando Cópia Direta (Ultra Rápida)...")
+                    else:
+                        encoder_callback(f"Usando {encoder_name} ({best_encoder})...")
                 
                 command = [
                     self.ffmpeg_path,
@@ -150,16 +186,52 @@ class VideoConverter:
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    encoding='utf-8',
+                    errors='ignore',
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
                 )
                 self.current_process = process
                 
-                _, stderr = process.communicate()
+                import re
+                import time
+                
+                total_seconds = None
+                start_time = time.time()
+                stderr_buffer = []
+                
+                for line in iter(process.stderr.readline, ''):
+                    stderr_buffer.append(line)
+                    
+                    if total_seconds is None:
+                        dur_match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})", line)
+                        if dur_match:
+                            hh, mm, ss, ms = map(int, dur_match.groups())
+                            total_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
+                    
+                    prog_match = re.search(r"time=\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})", line)
+                    if prog_match and total_seconds:
+                        hh, mm, ss, ms = map(int, prog_match.groups())
+                        current_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
+                        
+                        percent = min(100.0, (current_seconds / total_seconds) * 100.0)
+                        elapsed = time.time() - start_time
+                        if current_seconds > 0:
+                            eta = max(0.0, (elapsed / current_seconds) * (total_seconds - current_seconds))
+                            eta_min = int(eta // 60)
+                            eta_sec = int(eta % 60)
+                            eta_str = f"{eta_min:02d}:{eta_sec:02d}"
+                            
+                            if progress_callback:
+                                progress_callback(f"{percent:.1f}% (Restam {eta_str})")
+                                
+                process.wait()
                 self.current_process = None
                 
                 if process.returncode != 0:
                     if error_callback:
-                        error_callback(f"Erro na conversão ({best_encoder}): {stderr.decode('utf-8', errors='ignore')}")
+                        err_text = "".join(stderr_buffer)
+                        error_callback(f"Erro na conversão ({best_encoder}): {err_text}")
                     return
 
                 if completion_callback:
