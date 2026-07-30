@@ -184,7 +184,7 @@ class VideoConverter:
                 
                 process = subprocess.Popen(
                     command,
-                    stdout=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
                     encoding='utf-8',

@@ -1,16 +1,17 @@
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from converter import VideoConverter
 from queue_manager import QueueManager, QueueItem
 import os
 import sys
+import winsound
 
 class ConverterGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
         self.title("Conversor de Vídeo para MP4 (Lote)")
-        self.geometry("700x550")
+        self.geometry("750x600")
         self.resizable(False, False)
         
         # Load Window Icon
@@ -94,14 +95,17 @@ class ConverterGUI(ctk.CTk):
         btn_control_frame = ctk.CTkFrame(bottom_frame, fg_color="transparent")
         btn_control_frame.pack()
         
-        self.btn_add = ctk.CTkButton(btn_control_frame, text="Adicionar Arquivos", command=self._add_files_to_queue)
-        self.btn_add.grid(row=0, column=0, padx=10)
+        self.btn_add = ctk.CTkButton(btn_control_frame, text="Adicionar Arquivos", width=120, command=self._add_files_to_queue)
+        self.btn_add.grid(row=0, column=0, padx=5)
         
-        self.btn_clear = ctk.CTkButton(btn_control_frame, text="Limpar Fila", fg_color="#7f8c8d", hover_color="#95a5a6", command=self._clear_all_queue)
-        self.btn_clear.grid(row=0, column=1, padx=10)
+        self.btn_clear = ctk.CTkButton(btn_control_frame, text="Limpar Fila", width=120, fg_color="#7f8c8d", hover_color="#95a5a6", command=self._clear_all_queue)
+        self.btn_clear.grid(row=0, column=1, padx=5)
         
-        self.btn_convert = ctk.CTkButton(btn_control_frame, text="Converter", fg_color="#27ae60", hover_color="#2ecc71", command=self._start_queue_conversion)
-        self.btn_convert.grid(row=0, column=2, padx=10)
+        self.btn_convert = ctk.CTkButton(btn_control_frame, text="Converter", width=120, fg_color="#27ae60", hover_color="#2ecc71", command=self._start_queue_conversion)
+        self.btn_convert.grid(row=0, column=2, padx=5)
+        
+        self.btn_open_folder = ctk.CTkButton(btn_control_frame, text="Abrir Pasta", width=120, fg_color="#34495e", hover_color="#2c3e50", state="disabled", command=self._open_dest_folder)
+        self.btn_open_folder.grid(row=0, column=3, padx=5)
         
         self.btn_download = ctk.CTkButton(main_frame, text="Baixar FFmpeg Automático (Necessário)", command=self._start_download, fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_download.pack(pady=(5, 0))
@@ -125,6 +129,19 @@ class ConverterGUI(ctk.CTk):
         folder = filedialog.askdirectory()
         if folder:
             self.dest_folder.set(folder)
+            
+    def _get_unique_output_path(self, out_path):
+        existing_paths = {item.output_path for item in self.queue_manager.items}
+        if not os.path.exists(out_path) and out_path not in existing_paths:
+            return out_path
+            
+        base, ext = os.path.splitext(out_path)
+        counter = 1
+        while True:
+            new_path = f"{base}_{counter}{ext}"
+            if not os.path.exists(new_path) and new_path not in existing_paths:
+                return new_path
+            counter += 1
             
     def _add_files_to_queue(self):
         files = filedialog.askopenfilenames(filetypes=[("Arquivos de Vídeo Suportados", "*.avi;*.dva;*.dav"), ("Todos os Arquivos", "*.*")])
@@ -154,6 +171,9 @@ class ConverterGUI(ctk.CTk):
                     dest = os.path.dirname(file_path)
                 out_path = os.path.join(dest, os.path.basename(os.path.splitext(file_path)[0] + ".mp4"))
                 
+            # Auto-rename duplicate target files to avoid silent overwriting
+            out_path = self._get_unique_output_path(out_path)
+            
             item = self.queue_manager.add_item(file_path, out_path)
             self._create_queue_row(item)
             added_count += 1
@@ -174,6 +194,20 @@ class ConverterGUI(ctk.CTk):
         
         lbl_status = ctk.CTkLabel(row_frame, text="Pendente", font=("Arial", 11, "bold"), text_color="gray", width=90, anchor="e")
         lbl_status.pack(side="right", padx=5)
+        
+        # Click handler to show error message
+        def on_row_click(event):
+            current_item = next((it for it in self.queue_manager.items if it.id == item.id), None)
+            if current_item and current_item.status == "Erro":
+                messagebox.showerror(
+                    "Detalhes do Erro",
+                    f"Arquivo: {os.path.basename(current_item.input_path)}\n\n{current_item.progress_msg}"
+                )
+                
+        row_frame.bind("<Button-1>", on_row_click)
+        lbl_name.bind("<Button-1>", on_row_click)
+        lbl_prog.bind("<Button-1>", on_row_click)
+        lbl_status.bind("<Button-1>", on_row_click)
         
         self.row_widgets[item.id] = {
             "frame": row_frame,
@@ -197,15 +231,23 @@ class ConverterGUI(ctk.CTk):
         if item.status == "Pendente":
             widgets["status_lbl"].configure(text_color="gray")
             widgets["prog_lbl"].configure(text_color="gray")
+            for w in ["frame", "name_lbl", "prog_lbl", "status_lbl"]:
+                widgets[w].configure(cursor="")
         elif item.status == "Convertendo":
             widgets["status_lbl"].configure(text_color="#d35400")
             widgets["prog_lbl"].configure(text_color="#d35400")
+            for w in ["frame", "name_lbl", "prog_lbl", "status_lbl"]:
+                widgets[w].configure(cursor="")
         elif item.status == "Concluído":
             widgets["status_lbl"].configure(text_color="#27ae60")
             widgets["prog_lbl"].configure(text_color="#27ae60")
+            for w in ["frame", "name_lbl", "prog_lbl", "status_lbl"]:
+                widgets[w].configure(cursor="")
         elif item.status == "Erro":
             widgets["status_lbl"].configure(text_color="#c0392b")
-            widgets["prog_lbl"].configure(text_color="#c0392b")
+            widgets["prog_lbl"].configure(text="Erro (Clique para detalhes)", text_color="#c0392b")
+            for w in ["frame", "name_lbl", "prog_lbl", "status_lbl"]:
+                widgets[w].configure(cursor="hand2")
             
     def _start_queue_conversion(self):
         if not self.converter.has_ffmpeg:
@@ -225,6 +267,7 @@ class ConverterGUI(ctk.CTk):
         self.btn_convert.configure(text="Parar", fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_add.configure(state="disabled")
         self.btn_clear.configure(state="disabled")
+        self.btn_open_folder.configure(state="disabled")
         self.chk_same_folder.configure(state="disabled")
         self.chk_ultra_fast.configure(state="disabled")
         self.btn_dest.configure(state="disabled")
@@ -234,11 +277,15 @@ class ConverterGUI(ctk.CTk):
         for item in self.queue_manager.items:
             if item.status == "Pendente":
                 if self.same_folder_var.get():
-                    item.output_path = os.path.splitext(item.input_path)[0] + ".mp4"
+                    out_path = os.path.splitext(item.input_path)[0] + ".mp4"
                 else:
                     dest = self.dest_folder.get()
-                    if dest:
-                        item.output_path = os.path.join(dest, os.path.basename(os.path.splitext(item.input_path)[0] + ".mp4"))
+                    if not dest:
+                        dest = os.path.dirname(item.input_path)
+                    out_path = os.path.join(dest, os.path.basename(os.path.splitext(item.input_path)[0] + ".mp4"))
+                
+                # Check conflict renaming again
+                item.output_path = self._get_unique_output_path(out_path)
                         
         self.queue_manager.start_conversion(ultra_fast=self.ultra_fast_var.get())
         
@@ -249,7 +296,7 @@ class ConverterGUI(ctk.CTk):
         for item in self.queue_manager.items:
             if item.status in ["Convertendo", "Pendente"]:
                 item.status = "Erro"
-                item.progress_msg = "Cancelado"
+                item.progress_msg = "Cancelado pelo usuário"
                 self._update_row_ui(item)
                 
         self._on_queue_finished()
@@ -268,6 +315,17 @@ class ConverterGUI(ctk.CTk):
         self.progress_bar.set(1.0)
         finished, total, _, _, _ = self.queue_manager.get_overall_progress()
         
+        # Enable open folder button if there is at least one finished file
+        has_completed = any(item.status == "Concluído" for item in self.queue_manager.items)
+        if has_completed:
+            self.btn_open_folder.configure(state="normal")
+            
+        # Play Windows notification sound
+        try:
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception:
+            pass
+            
         has_errors = any(item.status == "Erro" for item in self.queue_manager.items)
         if has_errors:
             self.lbl_status.configure(text=f"Conversão finalizada. {finished} de {total} processados.", text_color="#c0392b")
@@ -283,8 +341,28 @@ class ConverterGUI(ctk.CTk):
             widgets["frame"].destroy()
         self.row_widgets.clear()
         self.progress_bar.set(0)
+        self.btn_open_folder.configure(state="disabled")
         self.lbl_status.configure(text="Fila limpa.", text_color="gray")
-
+        
+    def _open_dest_folder(self):
+        folder = None
+        if not self.same_folder_var.get():
+            folder = self.dest_folder.get()
+            
+        if not folder or not os.path.exists(folder):
+            # Fallback to the folder of the first completed file
+            completed_item = next((it for it in self.queue_manager.items if it.status == "Concluído"), None)
+            if completed_item:
+                folder = os.path.dirname(completed_item.output_path)
+                
+        if folder and os.path.exists(folder):
+            try:
+                os.startfile(folder)
+            except Exception as e:
+                messagebox.showerror("Erro", f"Não foi possível abrir a pasta:\n{str(e)}")
+        else:
+            messagebox.showwarning("Aviso", "Pasta de destino não encontrada ou vazia.")
+            
     def _update_overall_progress_ui(self):
         finished, total, _, percent, eta = self.queue_manager.get_overall_progress()
         if total == 0:
