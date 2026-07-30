@@ -4,3 +4,6 @@ ffmpeg/
 *.rar
 *.zip
 *.exe
+build/
+dist/
+build/Converter-AVI-MP4/

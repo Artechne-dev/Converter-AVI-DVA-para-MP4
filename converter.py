@@ -10,6 +10,14 @@ class VideoConverter:
     def _check_ffmpeg(self):
         import sys
         
+        # Check PyInstaller temporary directory (sys._MEIPASS)
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            temp_ffmpeg = os.path.join(sys._MEIPASS, "ffmpeg.exe")
+            if os.path.exists(temp_ffmpeg):
+                self.ffmpeg_path = temp_ffmpeg
+                self.has_ffmpeg = True
+                return
+        
         # Check system PATH
         if shutil.which("ffmpeg"):
             self.ffmpeg_path = "ffmpeg"
@@ -71,18 +79,71 @@ class VideoConverter:
         thread = threading.Thread(target=_run)
         thread.start()
 
-    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None):
+    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None):
+        if input_path.lower().endswith(".mp4") and output_path.lower().endswith(".mp4"):
+            if error_callback:
+                error_callback("Arquivo de origem já é MP4. Conversão bloqueada.")
+            return
+
+        if os.path.abspath(input_path) == os.path.abspath(output_path):
+            if error_callback:
+                error_callback("Arquivo de origem e destino não podem ser iguais.")
+            return
+
         def _run():
             try:
+                if encoder_callback:
+                    encoder_callback("Detectando aceleradores...")
+                
+                best_encoder = "libx264"
+                encoders_to_test = {
+                    "h264_nvenc": "NVIDIA",
+                    "h264_qsv": "Intel",
+                    "h264_amf": "AMD"
+                }
+                
+                for enc, name in encoders_to_test.items():
+                    test_command = [
+                        self.ffmpeg_path,
+                        "-y",
+                        "-f", "lavfi",
+                        "-i", "color=c=black:s=64x64:d=0.1",
+                        "-c:v", enc,
+                        "-f", "null",
+                        "-"
+                    ]
+                    try:
+                        test_process = subprocess.Popen(
+                            test_command,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                        )
+                        test_process.communicate()
+                        if test_process.returncode == 0:
+                            best_encoder = enc
+                            break
+                    except Exception:
+                        pass
+                
+                encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                if encoder_callback:
+                    encoder_callback(f"Usando {encoder_name} ({best_encoder})...")
+                
                 command = [
                     self.ffmpeg_path,
                     "-y",
                     "-i", input_path,
-                    "-c:v", "libx264",
-                    "-preset", "fast",
+                    "-c:v", best_encoder,
+                ]
+                
+                if best_encoder == "libx264":
+                    command.extend(["-preset", "fast"])
+                
+                command.extend([
                     "-c:a", "aac",
                     output_path
-                ]
+                ])
                 
                 process = subprocess.Popen(
                     command,
@@ -95,7 +156,7 @@ class VideoConverter:
                 
                 if process.returncode != 0:
                     if error_callback:
-                        error_callback(f"Erro na conversão: {stderr.decode('utf-8', errors='ignore')}")
+                        error_callback(f"Erro na conversão ({best_encoder}): {stderr.decode('utf-8', errors='ignore')}")
                     return
 
                 if completion_callback:
