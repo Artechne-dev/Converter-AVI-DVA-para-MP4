@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -42,17 +42,10 @@ jobs:
         run: |
           pyinstaller --clean Converter-AVI-MP4.spec
           
-      - name: Move latest tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f latest
-          git push -f origin latest
-          
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "Versão mais recente (Auto-Build)"
-          body: "Esta release é gerada e atualizada automaticamente pelo GitHub Actions a cada novo commit na branch main. Sempre contém a versão mais atualizada do código."
+          tag_name: ${{ github.ref_name }}
+          name: "Versão ${{ github.ref_name }}"
+          body: "Release automática gerada a partir da tag ${{ github.ref_name }}."
           files: dist/Converter-AVI-MP4.exe
