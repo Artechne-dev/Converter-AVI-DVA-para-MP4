@@ -31,10 +31,16 @@ jobs:
           cd ..
           pip install .
           
+      - name: Download FFmpeg for bundling
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_extracted"
+          Get-ChildItem -Path "ffmpeg_extracted" -Filter "ffmpeg.exe" -Recurse | Copy-Item -Destination "."
+
       - name: Build Executable
         run: |
-          $CTK_PATH = python -c "import customtkinter, os; print(os.path.dirname(customtkinter.__file__))"
-          pyinstaller --noconfirm --onefile --windowed --add-data "$CTK_PATH;customtkinter/" --icon="icon.ico" --name Converter-AVI-MP4 main.py
+          pyinstaller --clean Converter-AVI-MP4.spec
           
       - name: Move latest tag
         run: |
