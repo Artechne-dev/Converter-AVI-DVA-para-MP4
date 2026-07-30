@@ -11,6 +11,18 @@ class ConverterGUI(ctk.CTk):
         self.geometry("550x350")
         self.resizable(False, False)
         
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+        icon_path = os.path.join(base_dir, "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
+        
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
         
@@ -90,6 +102,14 @@ class ConverterGUI(ctk.CTk):
             self._show_error("Selecione os arquivos de entrada e saída.")
             return
 
+        if in_path.lower().endswith(".mp4") and out_path.lower().endswith(".mp4"):
+            self._show_error("Arquivo de origem já é MP4. Conversão redundante bloqueada.")
+            return
+
+        if os.path.abspath(in_path) == os.path.abspath(out_path):
+            self._show_error("Arquivo de origem e destino não podem ser iguais.")
+            return
+
         self.btn_convert.configure(state="disabled", text="Convertendo...")
         self.lbl_status.configure(text="Conversão em andamento... Aguarde.", text_color="#d35400")
 
@@ -97,8 +117,12 @@ class ConverterGUI(ctk.CTk):
             input_path=in_path,
             output_path=out_path,
             completion_callback=self._on_conversion_complete,
-            error_callback=self._on_conversion_error
+            error_callback=self._on_conversion_error,
+            encoder_callback=self._on_encoder_status
         )
+
+    def _on_encoder_status(self, msg):
+        self.after(0, lambda: self.lbl_status.configure(text=msg, text_color="#d35400"))
 
     def _on_conversion_complete(self):
         self.after(0, self._handle_complete)

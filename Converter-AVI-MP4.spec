@@ -1,11 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+import customtkinter
 
+spec_dir = os.path.dirname(os.path.abspath(spec_filename)) if 'spec_filename' in locals() else os.getcwd()
+main_py_path = os.path.join(spec_dir, 'main.py')
+customtkinter_path = os.path.dirname(customtkinter.__file__)
+
+datas = [(customtkinter_path, 'customtkinter/')]
+if os.path.exists(os.path.join(spec_dir, 'ffmpeg.exe')):
+    datas.append(('ffmpeg.exe', '.'))
 
 a = Analysis(
-    ['c:/GitHub/Converter-AVI-MP4/main.py'],
+    [main_py_path],
     pathex=[],
     binaries=[],
-    datas=[('C:\\GitHub\\Converter-AVI-MP4\\.venv\\Lib\\site-packages\\customtkinter', 'customtkinter/')],
+    datas=datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
