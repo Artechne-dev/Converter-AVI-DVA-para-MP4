@@ -11,7 +11,7 @@ class ConverterGUI(ctk.CTk):
         super().__init__()
         
         self.title("Conversor de Vídeo para MP4 (Lote)")
-        self.geometry("700x550")
+        self.geometry("750x600")
         self.resizable(False, False)
         
         # Load Window Icon
@@ -95,17 +95,17 @@ class ConverterGUI(ctk.CTk):
         btn_control_frame = ctk.CTkFrame(bottom_frame, fg_color="transparent")
         btn_control_frame.pack()
         
-        self.btn_add = ctk.CTkButton(btn_control_frame, text="Adicionar Arquivos", command=self._add_files_to_queue)
-        self.btn_add.grid(row=0, column=0, padx=10)
+        self.btn_add = ctk.CTkButton(btn_control_frame, text="Adicionar Arquivos", width=120, command=self._add_files_to_queue)
+        self.btn_add.grid(row=0, column=0, padx=5)
         
-        self.btn_clear = ctk.CTkButton(btn_control_frame, text="Limpar Fila", fg_color="#7f8c8d", hover_color="#95a5a6", command=self._clear_all_queue)
-        self.btn_clear.grid(row=0, column=1, padx=10)
+        self.btn_clear = ctk.CTkButton(btn_control_frame, text="Limpar Fila", width=120, fg_color="#7f8c8d", hover_color="#95a5a6", command=self._clear_all_queue)
+        self.btn_clear.grid(row=0, column=1, padx=5)
         
-        self.btn_convert = ctk.CTkButton(btn_control_frame, text="Converter", fg_color="#27ae60", hover_color="#2ecc71", command=self._start_queue_conversion)
-        self.btn_convert.grid(row=0, column=2, padx=10)
+        self.btn_convert = ctk.CTkButton(btn_control_frame, text="Converter", width=120, fg_color="#27ae60", hover_color="#2ecc71", command=self._start_queue_conversion)
+        self.btn_convert.grid(row=0, column=2, padx=5)
         
-        self.btn_open_folder = ctk.CTkButton(btn_control_frame, text="Abrir Pasta", fg_color="#34495e", hover_color="#2c3e50", state="disabled", command=self._open_dest_folder)
-        self.btn_open_folder.grid(row=0, column=3, padx=10)
+        self.btn_open_folder = ctk.CTkButton(btn_control_frame, text="Abrir Pasta", width=120, fg_color="#34495e", hover_color="#2c3e50", state="disabled", command=self._open_dest_folder)
+        self.btn_open_folder.grid(row=0, column=3, padx=5)
         
         self.btn_download = ctk.CTkButton(main_frame, text="Baixar FFmpeg Automático (Necessário)", command=self._start_download, fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_download.pack(pady=(5, 0))
