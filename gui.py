@@ -320,11 +320,14 @@ class ConverterGUI(ctk.CTk):
         if has_completed:
             self.btn_open_folder.configure(state="normal")
             
-        # Play Windows notification sound
-        try:
-            winsound.MessageBeep(winsound.MB_ICONASTERISK)
-        except Exception:
-            pass
+        # Play Windows notification sound in background thread to prevent GUI hangs
+        import threading
+        def play_beep():
+            try:
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except Exception:
+                pass
+        threading.Thread(target=play_beep, daemon=True).start()
             
         has_errors = any(item.status == "Erro" for item in self.queue_manager.items)
         if has_errors:

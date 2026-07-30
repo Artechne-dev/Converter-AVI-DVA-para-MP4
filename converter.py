@@ -107,6 +107,7 @@ class VideoConverter:
                     
                     test_command = [
                         self.ffmpeg_path,
+                        "-nostdin",
                         "-y",
                         "-i", input_path,
                         "-c:v", "copy",
@@ -118,6 +119,7 @@ class VideoConverter:
                     try:
                         test_process = subprocess.Popen(
                             test_command,
+                            stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -138,6 +140,7 @@ class VideoConverter:
                     for enc, name in encoders_to_test.items():
                         test_command = [
                             self.ffmpeg_path,
+                            "-nostdin",
                             "-y",
                             "-f", "lavfi",
                             "-i", "color=c=black:s=64x64:d=0.1",
@@ -148,6 +151,7 @@ class VideoConverter:
                         try:
                             test_process = subprocess.Popen(
                                 test_command,
+                                stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -169,6 +173,7 @@ class VideoConverter:
                 
                 command = [
                     self.ffmpeg_path,
+                    "-nostdin",
                     "-y",
                     "-i", input_path,
                     "-c:v", best_encoder,
@@ -184,6 +189,7 @@ class VideoConverter:
                 
                 process = subprocess.Popen(
                     command,
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
@@ -200,6 +206,32 @@ class VideoConverter:
                 start_time = time.time()
                 stderr_buffer = []
                 
+                last_percent = 0.0
+                last_progress_time = time.time()
+                
+                # Watchdog thread to terminate hung process at >= 95%
+                watchdog_state = {
+                    "last_percent": 0.0,
+                    "last_progress_time": time.time(),
+                    "should_stop": False
+                }
+                
+                def watchdog_func():
+                    while not watchdog_state["should_stop"]:
+                        time.sleep(1.0)
+                        if watchdog_state["last_percent"] >= 95.0:
+                            if (time.time() - watchdog_state["last_progress_time"]) > 10.0:
+                                if process.poll() is None:
+                                    try:
+                                        process.kill()
+                                    except Exception:
+                                        pass
+                                break
+                                
+                watchdog_thread = threading.Thread(target=watchdog_func)
+                watchdog_thread.daemon = True
+                watchdog_thread.start()
+                
                 for line in iter(process.stderr.readline, ''):
                     stderr_buffer.append(line)
                     
@@ -215,6 +247,13 @@ class VideoConverter:
                         current_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
                         
                         percent = min(100.0, (current_seconds / total_seconds) * 100.0)
+                        
+                        if percent != last_percent:
+                            last_percent = percent
+                            last_progress_time = time.time()
+                            watchdog_state["last_percent"] = percent
+                            watchdog_state["last_progress_time"] = last_progress_time
+                            
                         elapsed = time.time() - start_time
                         if current_seconds > 0:
                             eta = max(0.0, (elapsed / current_seconds) * (total_seconds - current_seconds))
@@ -227,8 +266,11 @@ class VideoConverter:
                                 
                 process.wait()
                 self.current_process = None
+                watchdog_state["should_stop"] = True
                 
-                if process.returncode != 0:
+                is_success = (process.returncode == 0) or (last_percent >= 95.0)
+                
+                if not is_success:
                     if error_callback:
                         err_text = "".join(stderr_buffer)
                         error_callback(f"Erro na conversão ({best_encoder}): {err_text}")
