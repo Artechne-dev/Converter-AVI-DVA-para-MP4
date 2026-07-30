@@ -202,6 +202,16 @@ class VideoConverter:
                 import re
                 import time
                 
+                def debug_log(msg):
+                    try:
+                        log_path = os.path.join(os.path.expanduser("~"), "Converter-AVI-MP4-debug.log")
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {msg}\n")
+                    except Exception:
+                        pass
+                
+                debug_log(f"Iniciando _run() para arquivo: {input_path}")
+                
                 total_seconds = None
                 start_time = time.time()
                 stderr_buffer = []
@@ -217,20 +227,25 @@ class VideoConverter:
                 }
                 
                 def watchdog_func():
+                    debug_log(f"Watchdog iniciado para pid {process.pid}")
                     while not watchdog_state["should_stop"]:
                         time.sleep(1.0)
                         if watchdog_state["last_percent"] >= 95.0:
-                            if (time.time() - watchdog_state["last_progress_time"]) > 10.0:
+                            elapsed_inactive = time.time() - watchdog_state["last_progress_time"]
+                            if elapsed_inactive > 10.0:
                                 if process.poll() is None:
+                                    debug_log(f"Watchdog ativado! Matando pid {process.pid}. Progresso: {watchdog_state['last_percent']:.1f}%. Inatividade: {elapsed_inactive:.1f}s")
                                     try:
                                         process.kill()
-                                    except Exception:
-                                        pass
+                                    except Exception as ex:
+                                        debug_log(f"Erro ao matar pid: {str(ex)}")
                                 break
                                 
                 watchdog_thread = threading.Thread(target=watchdog_func)
                 watchdog_thread.daemon = True
                 watchdog_thread.start()
+                
+                debug_log(f"Subprocesso FFmpeg criado com pid: {process.pid}")
                 
                 for line in iter(process.stderr.readline, ''):
                     stderr_buffer.append(line)
@@ -240,6 +255,7 @@ class VideoConverter:
                         if dur_match:
                             hh, mm, ss, ms = map(int, dur_match.groups())
                             total_seconds = hh * 3600 + mm * 60 + ss + ms / 100.0
+                            debug_log(f"Duração detectada: {total_seconds} segundos")
                     
                     prog_match = re.search(r"time=\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})", line)
                     if prog_match and total_seconds:
@@ -264,11 +280,13 @@ class VideoConverter:
                             if progress_callback:
                                 progress_callback(f"{percent:.1f}% (Restam {eta_str})")
                                 
+                debug_log(f"Loop readline finalizado para pid {process.pid}. returncode provisório: {process.poll()}")
                 process.wait()
                 self.current_process = None
                 watchdog_state["should_stop"] = True
                 
                 is_success = (process.returncode == 0) or (last_percent >= 95.0)
+                debug_log(f"process.wait() finalizado para pid {process.pid}. returncode final: {process.returncode}. is_success: {is_success}")
                 
                 if not is_success:
                     if error_callback:
@@ -279,6 +297,7 @@ class VideoConverter:
                 if completion_callback:
                     completion_callback()
             except Exception as e:
+                debug_log(f"Exceção em _run(): {str(e)}")
                 if error_callback:
                     error_callback(str(e))
 
