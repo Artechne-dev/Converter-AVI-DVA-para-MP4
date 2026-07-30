@@ -76,7 +76,11 @@ class ConverterGUI(ctk.CTk):
         bottom_frame.pack(fill="x", padx=10, pady=(5, 10))
         
         self.lbl_status = ctk.CTkLabel(bottom_frame, text="Adicione arquivos para começar.", text_color="gray", font=("Arial", 11))
-        self.lbl_status.pack(pady=5)
+        self.lbl_status.pack(pady=(5, 2))
+        
+        self.progress_bar = ctk.CTkProgressBar(bottom_frame, width=500)
+        self.progress_bar.pack(pady=(2, 5))
+        self.progress_bar.set(0)
         
         btn_control_frame = ctk.CTkFrame(bottom_frame, fg_color="transparent")
         btn_control_frame.pack()
@@ -171,6 +175,7 @@ class ConverterGUI(ctk.CTk):
         
     def _on_item_updated(self, item):
         self.after(0, lambda: self._update_row_ui(item))
+        self.after(0, self._update_overall_progress_ui)
         
     def _update_row_ui(self, item):
         widgets = self.row_widgets.get(item.id)
@@ -249,9 +254,12 @@ class ConverterGUI(ctk.CTk):
         self.chk_same_folder.configure(state="normal")
         self._toggle_dest_folder()
         
+        self.progress_bar.set(1.0)
+        finished, total, _, _, _ = self.queue_manager.get_overall_progress()
+        
         has_errors = any(item.status == "Erro" for item in self.queue_manager.items)
         if has_errors:
-            self.lbl_status.configure(text="Conversão finalizada com erros.", text_color="#c0392b")
+            self.lbl_status.configure(text=f"Conversão finalizada. {finished} de {total} processados.", text_color="#c0392b")
         else:
             self.lbl_status.configure(text="Fila finalizada com sucesso!", text_color="#27ae60")
             
@@ -263,7 +271,31 @@ class ConverterGUI(ctk.CTk):
         for widgets in self.row_widgets.values():
             widgets["frame"].destroy()
         self.row_widgets.clear()
+        self.progress_bar.set(0)
         self.lbl_status.configure(text="Fila limpa.", text_color="gray")
+
+    def _update_overall_progress_ui(self):
+        finished, total, _, percent, eta = self.queue_manager.get_overall_progress()
+        if total == 0:
+            self.progress_bar.set(0)
+            self.lbl_status.configure(text="Adicione arquivos para começar.", text_color="gray")
+            return
+            
+        self.progress_bar.set(percent / 100.0)
+        
+        if eta > 0:
+            eta_min = eta // 60
+            eta_sec = eta % 60
+            eta_str = f"{eta_min:02d}:{eta_sec:02d}"
+            eta_text = f" (Restam {eta_str})"
+        else:
+            eta_text = ""
+            
+        if self.queue_manager.is_running:
+            self.lbl_status.configure(
+                text=f"Progresso Geral: {percent:.1f}%{eta_text} | Processado {finished} de {total} arquivo(s)",
+                text_color="#d35400"
+            )
         
     def _show_error(self, msg):
         self.lbl_status.configure(text=msg[:120] + "..." if len(msg) > 120 else msg, text_color="#c0392b")

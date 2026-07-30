@@ -1,6 +1,7 @@
 import os
 import threading
 import uuid
+import time
 from converter import VideoConverter
 
 class QueueItem:
@@ -17,6 +18,7 @@ class QueueManager:
         self.items = []
         self.is_running = False
         self.current_index = -1
+        self.queue_start_time = 0.0
         self._lock = threading.Lock()
         
         # Callbacks
@@ -41,6 +43,7 @@ class QueueManager:
             if self.is_running:
                 return
             self.is_running = True
+            self.queue_start_time = time.time()
             
         thread = threading.Thread(target=self._process_queue)
         thread.daemon = True
@@ -108,3 +111,30 @@ class QueueManager:
             
             if self.on_item_updated:
                 self.on_item_updated(item)
+
+    def get_overall_progress(self):
+        with self._lock:
+            total = len(self.items)
+            if total == 0:
+                return 0, 0, 0.0, 0.0, 0
+                
+            completed = sum(1 for it in self.items if it.status == "Concluído")
+            failed = sum(1 for it in self.items if it.status == "Erro")
+            
+            active_fraction = 0.0
+            active_item = next((it for it in self.items if it.status == "Convertendo"), None)
+            if active_item and active_item.progress_msg:
+                import re
+                match = re.search(r"(\d+\.\d+)%", active_item.progress_msg)
+                if match:
+                    active_fraction = float(match.group(1)) / 100.0
+            
+            processed = completed + failed + active_fraction
+            overall_percent = (processed / total) * 100.0
+            
+            eta = 0
+            if processed > 0.01 and self.is_running:
+                elapsed = time.time() - self.queue_start_time
+                eta = (elapsed / processed) * (total - processed)
+                
+            return completed + failed, total, processed, overall_percent, int(eta)
