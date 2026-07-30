@@ -107,6 +107,7 @@ class VideoConverter:
                     
                     test_command = [
                         self.ffmpeg_path,
+                        "-nostdin",
                         "-y",
                         "-i", input_path,
                         "-c:v", "copy",
@@ -118,6 +119,7 @@ class VideoConverter:
                     try:
                         test_process = subprocess.Popen(
                             test_command,
+                            stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -138,6 +140,7 @@ class VideoConverter:
                     for enc, name in encoders_to_test.items():
                         test_command = [
                             self.ffmpeg_path,
+                            "-nostdin",
                             "-y",
                             "-f", "lavfi",
                             "-i", "color=c=black:s=64x64:d=0.1",
@@ -148,6 +151,7 @@ class VideoConverter:
                         try:
                             test_process = subprocess.Popen(
                                 test_command,
+                                stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -169,6 +173,7 @@ class VideoConverter:
                 
                 command = [
                     self.ffmpeg_path,
+                    "-nostdin",
                     "-y",
                     "-i", input_path,
                     "-c:v", best_encoder,
@@ -184,6 +189,7 @@ class VideoConverter:
                 
                 process = subprocess.Popen(
                     command,
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
