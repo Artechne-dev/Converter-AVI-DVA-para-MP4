@@ -6,6 +6,7 @@ import shutil
 class VideoConverter:
     def __init__(self):
         self._check_ffmpeg()
+        self.current_process = None
 
     def _check_ffmpeg(self):
         import sys
@@ -151,8 +152,10 @@ class VideoConverter:
                     stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
                 )
+                self.current_process = process
                 
                 _, stderr = process.communicate()
+                self.current_process = None
                 
                 if process.returncode != 0:
                     if error_callback:
@@ -167,3 +170,11 @@ class VideoConverter:
 
         thread = threading.Thread(target=_run)
         thread.start()
+
+    def cancel(self):
+        if self.current_process:
+            try:
+                self.current_process.kill()
+            except Exception:
+                pass
+            self.current_process = None
