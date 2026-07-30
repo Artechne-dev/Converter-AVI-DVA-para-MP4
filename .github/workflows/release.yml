@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -15,6 +15,13 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
         
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,7 +52,7 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "Versão ${{ github.ref_name }}"
-          body: "Release automática gerada a partir da tag ${{ github.ref_name }}."
+          tag_name: ${{ steps.tag_version.outputs.new_tag }}
+          name: "Versão ${{ steps.tag_version.outputs.new_tag }}"
+          body: "Release automática gerada pelo commit em main.\n\nChangelog:\n${{ steps.tag_version.outputs.changelog }}"
           files: dist/Converter-AVI-MP4.exe
