@@ -2,6 +2,7 @@ import subprocess
 import threading
 import os
 import shutil
+from src.core.config import IS_FROZEN, get_path
 
 class VideoConverter:
     def __init__(self):
@@ -9,11 +10,9 @@ class VideoConverter:
         self.current_process = None
 
     def _check_ffmpeg(self):
-        import sys
-        
         # Check PyInstaller temporary directory (sys._MEIPASS)
-        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-            temp_ffmpeg = os.path.join(sys._MEIPASS, "ffmpeg.exe")
+        if IS_FROZEN:
+            temp_ffmpeg = get_path("ffmpeg.exe", use_meipass=True)
             if os.path.exists(temp_ffmpeg):
                 self.ffmpeg_path = temp_ffmpeg
                 self.has_ffmpeg = True
@@ -26,12 +25,7 @@ class VideoConverter:
             return
             
         # Check local folder
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            
-        local_ffmpeg = os.path.join(base_dir, "ffmpeg.exe")
+        local_ffmpeg = get_path("ffmpeg.exe", use_meipass=False)
         if os.path.exists(local_ffmpeg):
             self.ffmpeg_path = local_ffmpeg
             self.has_ffmpeg = True
@@ -46,7 +40,6 @@ class VideoConverter:
                 import urllib.request
                 import zipfile
                 import io
-                import sys
                 
                 url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
                 
@@ -63,11 +56,7 @@ class VideoConverter:
                         if file_info.filename.endswith('ffmpeg.exe'):
                             file_info.filename = 'ffmpeg.exe'
                             
-                            if getattr(sys, 'frozen', False):
-                                save_dir = os.path.dirname(sys.executable)
-                            else:
-                                save_dir = os.path.dirname(os.path.abspath(__file__))
-                                
+                            save_dir = get_path("", use_meipass=False)
                             zip_ref.extract(file_info, save_dir)
                             break
                             
