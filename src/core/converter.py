@@ -8,6 +8,9 @@ class VideoConverter:
     def __init__(self):
         self._check_ffmpeg()
         self.current_process = None
+        self.available_encoders = {}
+        if self.has_ffmpeg:
+            self._detect_encoders()
 
     def _check_ffmpeg(self):
         # Check PyInstaller temporary directory (sys._MEIPASS)
@@ -32,6 +35,41 @@ class VideoConverter:
         else:
             self.ffmpeg_path = None
             self.has_ffmpeg = False
+
+    def _detect_encoders(self):
+        encoders_to_test = {
+            "h264_nvenc": "NVIDIA Acelerado",
+            "h264_qsv": "Intel Acelerado",
+            "h264_amf": "AMD Acelerado"
+        }
+        self.available_encoders = {
+            "auto": "Automático (Melhor Acelerador)",
+            "libx264": "CPU (Padrão)"
+        }
+        for enc, name in encoders_to_test.items():
+            test_command = [
+                self.ffmpeg_path,
+                "-nostdin",
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=black:s=64x64:d=0.1",
+                "-c:v", enc,
+                "-f", "null",
+                "-"
+            ]
+            try:
+                test_process = subprocess.Popen(
+                    test_command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                test_process.communicate()
+                if test_process.returncode == 0:
+                    self.available_encoders[enc] = name
+            except Exception:
+                pass
 
     @staticmethod
     def download_ffmpeg(progress_callback=None, completion_callback=None, error_callback=None):
@@ -69,7 +107,7 @@ class VideoConverter:
         thread = threading.Thread(target=_run)
         thread.start()
 
-    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None, ultra_fast=False):
+    def convert(self, input_path: str, output_path: str, progress_callback=None, completion_callback=None, error_callback=None, encoder_callback=None, ultra_fast=False, selected_encoder="auto", quality="medium"):
         if input_path.lower().endswith(".mp4") and output_path.lower().endswith(".mp4"):
             if error_callback:
                 error_callback("Arquivo de origem já é MP4. Conversão bloqueada.")
@@ -82,12 +120,15 @@ class VideoConverter:
 
         def _run():
             try:
-                best_encoder = "libx264"
-                encoders_to_test = {
-                    "h264_nvenc": "NVIDIA",
-                    "h264_qsv": "Intel",
-                    "h264_amf": "AMD"
-                }
+                if selected_encoder == "auto":
+                    # Determine best encoder among available
+                    best_encoder = "libx264"
+                    for enc in ["h264_nvenc", "h264_qsv", "h264_amf"]:
+                        if enc in self.available_encoders:
+                            best_encoder = enc
+                            break
+                else:
+                    best_encoder = selected_encoder
                 
                 use_copy = False
                 if ultra_fast:
@@ -123,36 +164,7 @@ class VideoConverter:
                     best_encoder = "copy"
                     encoder_name = "Cópia Direta"
                 else:
-                    if encoder_callback:
-                        encoder_callback("Detectando aceleradores...")
-                    
-                    for enc, name in encoders_to_test.items():
-                        test_command = [
-                            self.ffmpeg_path,
-                            "-nostdin",
-                            "-y",
-                            "-f", "lavfi",
-                            "-i", "color=c=black:s=64x64:d=0.1",
-                            "-c:v", enc,
-                            "-f", "null",
-                            "-"
-                        ]
-                        try:
-                            test_process = subprocess.Popen(
-                                test_command,
-                                stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                            )
-                            test_process.communicate()
-                            if test_process.returncode == 0:
-                                best_encoder = enc
-                                break
-                        except Exception:
-                            pass
-                    
-                    encoder_name = encoders_to_test.get(best_encoder, "CPU")
+                    encoder_name = self.available_encoders.get(best_encoder, "CPU")
                 
                 if encoder_callback:
                     if best_encoder == "copy":
@@ -168,8 +180,26 @@ class VideoConverter:
                     "-c:v", best_encoder,
                 ]
                 
-                if best_encoder == "libx264":
-                    command.extend(["-preset", "fast"])
+                if best_encoder == "copy":
+                    pass
+                else:
+                    # Apply quality configurations
+                    if best_encoder == "libx264":
+                        crf_map = {"high": "18", "medium": "23", "low": "28"}
+                        crf = crf_map.get(quality, "23")
+                        command.extend(["-crf", crf, "-preset", "fast"])
+                    elif best_encoder == "h264_nvenc":
+                        qp_map = {"high": "19", "medium": "24", "low": "29"}
+                        qp = qp_map.get(quality, "24")
+                        command.extend(["-rc", "constqp", "-qp", qp])
+                    elif best_encoder == "h264_qsv":
+                        gq_map = {"high": "20", "medium": "25", "low": "30"}
+                        gq = gq_map.get(quality, "25")
+                        command.extend(["-global_quality", gq])
+                    elif best_encoder == "h264_amf":
+                        qp_map = {"high": "19", "medium": "24", "low": "29"}
+                        qp = qp_map.get(quality, "24")
+                        command.extend(["-rc", "cqp", "-qp_i", qp, "-qp_p", qp])
                 
                 command.extend([
                     "-c:a", "aac",

@@ -1,21 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import customtkinter
+from PyInstaller.utils.hooks import collect_all
 
 spec_dir = os.path.dirname(os.path.abspath(spec_filename)) if 'spec_filename' in locals() else os.getcwd()
 main_py_path = os.path.join(spec_dir, 'main.py')
 customtkinter_path = os.path.dirname(customtkinter.__file__)
 
-datas = [(customtkinter_path, 'customtkinter/')]
+# Collect data, binaries, and hidden imports for tkinterdnd2
+t_datas, t_binaries, t_hiddenimports = collect_all('tkinterdnd2')
+
+datas = [(customtkinter_path, 'customtkinter/')] + t_datas
+binaries = t_binaries
+hiddenimports = t_hiddenimports
+
 if os.path.exists(os.path.join(spec_dir, 'ffmpeg.exe')):
     datas.append(('ffmpeg.exe', '.'))
 
 a = Analysis(
     [main_py_path],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
