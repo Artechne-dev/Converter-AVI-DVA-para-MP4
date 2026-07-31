@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+from tkinterdnd2 import TkinterDnD, DND_FILES
 from src.core.converter import VideoConverter
 from src.core.queue_manager import QueueManager, QueueItem
 from src.core.config import get_path
@@ -7,12 +8,14 @@ import os
 import sys
 import winsound
 
-class ConverterGUI(ctk.CTk):
+class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
         super().__init__()
+        # Initialize DnDWrapper
+        self.TkdndVersion = TkinterDnD._require(self)
         
-        self.title("Conversor de Vídeo para MP4 (Lote) - v1.3")
-        self.geometry("750x600")
+        self.title("Conversor de Vídeo para MP4 (Lote) - v1.4")
+        self.geometry("750x660")
         self.resizable(False, False)
         
         # Load Window Icon
@@ -37,6 +40,10 @@ class ConverterGUI(ctk.CTk):
         self.dest_folder = ctk.StringVar()
         self.same_folder_var = ctk.BooleanVar(value=True)
         self.ultra_fast_var = ctk.BooleanVar(value=True)
+        
+        # Register Drag and Drop target
+        self.drop_target_register(DND_FILES)
+        self.dnd_bind('<<Drop>>', self._on_file_drop)
         
         import queue
         self.gui_queue = queue.Queue()
@@ -78,15 +85,41 @@ class ConverterGUI(ctk.CTk):
         )
         self.chk_ultra_fast.grid(row=2, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="w")
         
+        # Hardware Encoder Selection
+        lbl_encoder = ctk.CTkLabel(out_frame, text="Acelerador de Vídeo:", font=("Arial", 11))
+        lbl_encoder.grid(row=3, column=0, padx=(10, 5), pady=(0, 10), sticky="e")
+        
+        self.encoder_name_to_key = {v: k for k, v in self.converter.available_encoders.items()}
+        encoder_options = list(self.converter.available_encoders.values()) if self.converter.available_encoders else ["CPU (Padrão)"]
+        
+        self.opt_encoder = ctk.CTkOptionMenu(out_frame, values=encoder_options, width=420)
+        self.opt_encoder.grid(row=3, column=1, padx=5, pady=(0, 10), sticky="w")
+        self.opt_encoder.set(encoder_options[0])
+        
+        # Video Quality Selection
+        lbl_quality = ctk.CTkLabel(out_frame, text="Qualidade do Vídeo:", font=("Arial", 11))
+        lbl_quality.grid(row=4, column=0, padx=(10, 5), pady=(0, 10), sticky="e")
+        
+        self.quality_name_to_key = {
+            "Alta (Qualidade Extra)": "high",
+            "Média (Recomendada)": "medium",
+            "Baixa (Arquivos Menores)": "low"
+        }
+        quality_options = list(self.quality_name_to_key.keys())
+        
+        self.opt_quality = ctk.CTkOptionMenu(out_frame, values=quality_options, width=420)
+        self.opt_quality.grid(row=4, column=1, padx=5, pady=(0, 10), sticky="w")
+        self.opt_quality.set("Média (Recomendada)")
+        
         # Middle Frame: Scrollable queue list
-        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=250, label_text="Fila de Conversão")
+        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=210, label_text="Fila de Conversão (Arraste e solte arquivos aqui)")
         self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Bottom Frame: Status and Controls
         bottom_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         bottom_frame.pack(fill="x", padx=10, pady=(5, 10))
         
-        self.lbl_status = ctk.CTkLabel(bottom_frame, text="Adicione arquivos para começar.", text_color="gray", font=("Arial", 11))
+        self.lbl_status = ctk.CTkLabel(bottom_frame, text="Adicione arquivos ou arraste-os para começar.", text_color="gray", font=("Arial", 11))
         self.lbl_status.pack(pady=(5, 2))
         
         self.progress_bar = ctk.CTkProgressBar(bottom_frame, width=500)
@@ -143,6 +176,47 @@ class ConverterGUI(ctk.CTk):
             if not os.path.exists(new_path) and new_path not in existing_paths:
                 return new_path
             counter += 1
+
+    def _on_file_drop(self, event):
+        if self.queue_manager.is_running:
+            return
+            
+        files = self.tk.splitlist(event.data)
+        if not files:
+            return
+            
+        added_count = 0
+        for file_path in files:
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext not in [".avi", ".dva", ".dav"]:
+                continue
+                
+            # Avoid duplicate pending items
+            is_dup = False
+            for item in self.queue_manager.items:
+                if item.input_path == file_path and item.status in ["Pendente", "Convertendo"]:
+                    is_dup = True
+                    break
+            if is_dup:
+                continue
+                
+            if self.same_folder_var.get():
+                out_path = os.path.splitext(file_path)[0] + ".mp4"
+            else:
+                dest = self.dest_folder.get()
+                if not dest:
+                    dest = os.path.dirname(file_path)
+                out_path = os.path.join(dest, os.path.basename(os.path.splitext(file_path)[0] + ".mp4"))
+                
+            # Auto-rename duplicate target files to avoid silent overwriting
+            out_path = self._get_unique_output_path(out_path)
+            
+            item = self.queue_manager.add_item(file_path, out_path)
+            self._create_queue_row(item)
+            added_count += 1
+            
+        if added_count > 0:
+            self.lbl_status.configure(text=f"{added_count} arquivo(s) adicionado(s) à fila.", text_color="gray")
             
     def _add_files_to_queue(self):
         files = filedialog.askopenfilenames(filetypes=[("Arquivos de Vídeo Suportados", "*.avi;*.dva;*.dav"), ("Todos os Arquivos", "*.*")])
@@ -271,6 +345,8 @@ class ConverterGUI(ctk.CTk):
         self.chk_same_folder.configure(state="disabled")
         self.chk_ultra_fast.configure(state="disabled")
         self.btn_dest.configure(state="disabled")
+        self.opt_encoder.configure(state="disabled")
+        self.opt_quality.configure(state="disabled")
         self.lbl_status.configure(text="Processando fila de conversão...", text_color="#d35400")
         
         # Apply output directory choices to pending items
@@ -286,8 +362,19 @@ class ConverterGUI(ctk.CTk):
                 
                 # Check conflict renaming again
                 item.output_path = self._get_unique_output_path(out_path)
+        
+        # Get selected encoder and quality keys
+        selected_enc_display = self.opt_encoder.get()
+        selected_encoder = self.encoder_name_to_key.get(selected_enc_display, "auto")
+        
+        selected_qual_display = self.opt_quality.get()
+        selected_quality = self.quality_name_to_key.get(selected_qual_display, "medium")
                         
-        self.queue_manager.start_conversion(ultra_fast=self.ultra_fast_var.get())
+        self.queue_manager.start_conversion(
+            ultra_fast=self.ultra_fast_var.get(),
+            selected_encoder=selected_encoder,
+            quality=selected_quality
+        )
         
     def _cancel_conversion(self):
         self.queue_manager.is_running = False
@@ -331,6 +418,8 @@ class ConverterGUI(ctk.CTk):
         self.btn_clear.configure(state="normal")
         self.chk_same_folder.configure(state="normal")
         self.chk_ultra_fast.configure(state="normal")
+        self.opt_encoder.configure(state="normal")
+        self.opt_quality.configure(state="normal")
         self._toggle_dest_folder()
         
         self.progress_bar.set(1.0)
@@ -391,7 +480,7 @@ class ConverterGUI(ctk.CTk):
         finished, total, _, percent, eta = self.queue_manager.get_overall_progress()
         if total == 0:
             self.progress_bar.set(0)
-            self.lbl_status.configure(text="Adicione arquivos para começar.", text_color="gray")
+            self.lbl_status.configure(text="Adicione arquivos ou arraste-os para começar.", text_color="gray")
             return
             
         self.progress_bar.set(percent / 100.0)
@@ -433,6 +522,13 @@ class ConverterGUI(ctk.CTk):
                 self.btn_download.pack_forget()
                 self.btn_convert.configure(state="normal")
                 self.lbl_status.configure(text="FFmpeg instalado com sucesso!", text_color="#27ae60")
+                
+                # Refresh encoders menu
+                self.converter._detect_encoders()
+                self.encoder_name_to_key = {v: k for k, v in self.converter.available_encoders.items()}
+                encoder_options = list(self.converter.available_encoders.values())
+                self.opt_encoder.configure(values=encoder_options)
+                self.opt_encoder.set(encoder_options[0])
             else:
                 self._show_error("Falha ao configurar o FFmpeg após o download.")
                 self.btn_download.configure(state="normal", text="Baixar FFmpeg Automático")
