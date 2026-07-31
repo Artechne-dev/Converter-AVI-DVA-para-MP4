@@ -1,7 +1,8 @@
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from converter import VideoConverter
-from queue_manager import QueueManager, QueueItem
+from src.core.converter import VideoConverter
+from src.core.queue_manager import QueueManager, QueueItem
+from src.core.config import get_path
 import os
 import sys
 import winsound
@@ -15,11 +16,7 @@ class ConverterGUI(ctk.CTk):
         self.resizable(False, False)
         
         # Load Window Icon
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        icon_path = os.path.join(base_dir, "icon.ico")
+        icon_path = get_path("icon.ico", use_meipass=False)
         if os.path.exists(icon_path):
             try:
                 self.iconbitmap(icon_path)

@@ -2,7 +2,7 @@ import os
 import threading
 import uuid
 import time
-from converter import VideoConverter
+from src.core.converter import VideoConverter
 
 class QueueItem:
     def __init__(self, input_path: str, output_path: str):
