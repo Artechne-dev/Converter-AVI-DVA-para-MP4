@@ -27,6 +27,10 @@ except ImportError:
 _GALLERY_COLS = 6
 # Thumbnail dimensions (16:9)
 _THUMB_W, _THUMB_H = 168, 95
+# Caminho padrão Intelbras
+_INTELBRAS_PATH = r"C:\ProgramData\Intelbras\SIMNext\Recording"
+# Extensões aceitas (whitelist)
+_ALLOWED_EXTS = frozenset((".avi", ".dva", ".dav"))
 
 
 class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -39,7 +43,7 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("blue")
 
-        self.title("Conversor de Vídeo para MP4 (Lote) - v1.9")
+        self.title("Conversor de Vídeo para MP4 (Lote) - v2.0")
         self.state("zoomed")
         self.minsize(900, 640)
 
@@ -110,23 +114,38 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
 
     def _build_header(self, parent):
         bar = ctk.CTkFrame(parent, fg_color="transparent")
-        bar.pack(fill="x", padx=10, pady=(6, 2))
+        bar.pack(fill="x", padx=10, pady=(6, 4))
+
+        # Cyan camera icon label
+        ctk.CTkLabel(
+            bar, text="📹",
+            font=ctk.CTkFont(size=20),
+        ).pack(side="left", padx=(0, 6))
 
         ctk.CTkLabel(
             bar,
             text="Conversor de Vídeo para MP4",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("#007ACC", "#00BCD4"),
         ).pack(side="left")
+
+        ctk.CTkLabel(
+            bar,
+            text="v2.0",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(side="left", padx=(6, 0))
 
         # Dark mode by default → show blue sun (click to switch to light)
         self.btn_theme = ctk.CTkButton(
             bar,
             text="☀",
-            width=38, height=30,
-            font=ctk.CTkFont(size=20),
+            width=32, height=32,
+            font=ctk.CTkFont(family="Segoe UI Symbol", size=18),
             fg_color="#1a6faf",
             hover_color="#2185cc",
             text_color="white",
+            corner_radius=8,
             command=self._toggle_theme,
         )
         self.btn_theme.pack(side="right")
@@ -153,27 +172,53 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
             out_frame, text="Selecionar", width=80, state="disabled",
             command=self._select_dest_folder,
         )
-        self.btn_dest.grid(row=1, column=2, padx=(5, 10), pady=(0, 8))
+        self.btn_dest.grid(row=1, column=2, padx=(5, 10), pady=(0, 4))
 
+        # Intelbras path hint — clickable to auto-fill
+        hint_frame = ctk.CTkFrame(out_frame, fg_color="transparent")
+        hint_frame.grid(row=2, column=0, columnspan=3, padx=(10, 10), pady=(0, 6), sticky="w")
+
+        ctk.CTkLabel(
+            hint_frame,
+            text="💡 Caminho padrão para gravações Intelbras:",
+            font=("Arial", 10),
+            text_color="gray",
+        ).pack(side="left")
+
+        lbl_intelbras = ctk.CTkLabel(
+            hint_frame,
+            text=_INTELBRAS_PATH,
+            font=("Arial", 10, "bold"),
+            text_color=("#007ACC", "#00BCD4"),
+            cursor="hand2",
+        )
+        lbl_intelbras.pack(side="left", padx=(4, 0))
+        # Click → auto-fills destination folder field and unlocks the checkbox
+        lbl_intelbras.bind(
+            "<Button-1>",
+            lambda e: self._apply_intelbras_path(),
+        )
+
+        # Renumber next rows to account for the new hint row
         self.chk_ultra_fast = ctk.CTkCheckBox(
             out_frame,
             text="Ativar Cópia Direta Ultra Rápida (Copia streams sem reprocessar quando possível)",
             variable=self.ultra_fast_var,
             font=("Arial", 11, "bold"),
         )
-        self.chk_ultra_fast.grid(row=2, column=0, columnspan=3, padx=10, pady=(0, 8), sticky="w")
+        self.chk_ultra_fast.grid(row=3, column=0, columnspan=3, padx=10, pady=(0, 8), sticky="w")
 
         ctk.CTkLabel(out_frame, text="Acelerador de Vídeo:", font=("Arial", 11)).grid(
-            row=3, column=0, padx=(10, 5), pady=(0, 8), sticky="e"
+            row=4, column=0, padx=(10, 5), pady=(0, 8), sticky="e"
         )
         self.encoder_name_to_key = {v: k for k, v in self.converter.available_encoders.items()}
         encoder_options = list(self.converter.available_encoders.values()) if self.converter.available_encoders else ["CPU (Padrão)"]
         self.opt_encoder = ctk.CTkOptionMenu(out_frame, values=encoder_options, width=420)
-        self.opt_encoder.grid(row=3, column=1, padx=5, pady=(0, 8), sticky="w")
+        self.opt_encoder.grid(row=4, column=1, padx=5, pady=(0, 8), sticky="w")
         self.opt_encoder.set(encoder_options[0])
 
         ctk.CTkLabel(out_frame, text="Qualidade do Vídeo:", font=("Arial", 11)).grid(
-            row=4, column=0, padx=(10, 5), pady=(0, 8), sticky="e"
+            row=5, column=0, padx=(10, 5), pady=(0, 8), sticky="e"
         )
         self.quality_name_to_key = {
             "Alta (Qualidade Extra)": "high",
@@ -182,7 +227,7 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         }
         quality_options = list(self.quality_name_to_key.keys())
         self.opt_quality = ctk.CTkOptionMenu(out_frame, values=quality_options, width=420)
-        self.opt_quality.grid(row=4, column=1, padx=5, pady=(0, 8), sticky="w")
+        self.opt_quality.grid(row=5, column=1, padx=5, pady=(0, 8), sticky="w")
         self.opt_quality.set("Média (Recomendada)")
 
     def _build_controls(self, parent):
@@ -235,7 +280,7 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
             ctk.set_appearance_mode("Light")
             # Light mode active → show black moon to switch back to dark
             self.btn_theme.configure(
-                text="🌙",
+                text="☽",
                 fg_color="#2c3e50",
                 hover_color="#34495e",
                 text_color="white",
@@ -307,6 +352,17 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         if folder:
             self.dest_folder.set(folder)
 
+    def _apply_intelbras_path(self):
+        """Auto-fills destination with the Intelbras default recording path."""
+        # Uncheck 'same folder' to expose the destination field
+        self.same_folder_var.set(False)
+        self._toggle_dest_folder()
+        self.dest_folder.set(_INTELBRAS_PATH)
+        self.lbl_status.configure(
+            text=f"Pasta de destino definida para: {_INTELBRAS_PATH}",
+            text_color="gray",
+        )
+
     def _get_unique_output_path(self, out_path: str) -> str:
         existing = {item.output_path for item in self.queue_manager.items}
         if not os.path.exists(out_path) and out_path not in existing:
@@ -324,7 +380,11 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
             out = os.path.splitext(file_path)[0] + ".mp4"
         else:
             dest = self.dest_folder.get() or os.path.dirname(file_path)
+            # Security: normalise path to prevent traversal sequences (e.g. ../)
+            dest = os.path.normpath(dest)
             out = os.path.join(dest, os.path.basename(os.path.splitext(file_path)[0] + ".mp4"))
+        # Security: ensure output stays within its intended directory (no traversal)
+        out = os.path.normpath(out)
         return self._get_unique_output_path(out)
 
     def _on_file_drop(self, event):
@@ -341,9 +401,18 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
 
     def _enqueue_files(self, files):
         added = 0
+        rejected = 0
         for file_path in files:
-            if os.path.splitext(file_path)[1].lower() not in (".avi", ".dva", ".dav"):
+            # Security: normalise and check extension against strict whitelist
+            file_path = os.path.normpath(file_path)
+            if os.path.splitext(file_path)[1].lower() not in _ALLOWED_EXTS:
+                rejected += 1
                 continue
+            # Security: file must exist and be readable
+            if not os.path.isfile(file_path):
+                rejected += 1
+                continue
+            # Avoid duplicates already in the pending/running queue
             is_dup = any(
                 item.input_path == file_path and item.status in ("Pendente", "Convertendo")
                 for item in self.queue_manager.items
@@ -351,11 +420,24 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
             if is_dup:
                 continue
             out_path = self._resolve_output(file_path)
+            # Security: verify the output directory is writable before queuing
+            out_dir = os.path.dirname(out_path)
+            if not os.path.isdir(out_dir):
+                try:
+                    os.makedirs(out_dir, exist_ok=True)
+                except OSError:
+                    self._show_error(f"Sem permissão de escrita em: {out_dir}")
+                    continue
             item = self.queue_manager.add_item(file_path, out_path)
             self._create_queue_row(item)
             added += 1
         if added:
-            self.lbl_status.configure(text=f"{added} arquivo(s) adicionado(s) à fila.", text_color="gray")
+            msg = f"{added} arquivo(s) adicionado(s) à fila."
+            if rejected:
+                msg += f" ({rejected} ignorado(s) — formato inválido ou não encontrado)"
+            self.lbl_status.configure(text=msg, text_color="gray")
+        elif rejected:
+            self._show_error(f"{rejected} arquivo(s) ignorado(s): formato inválido ou não encontrado.")
 
     def _create_queue_row(self, item: QueueItem):
         row_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
