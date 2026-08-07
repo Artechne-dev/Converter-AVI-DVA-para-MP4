@@ -8,15 +8,23 @@ import os
 import sys
 import winsound
 
+# winotify: toast notifications nativas do Windows — falha silenciosa em outros OS
+try:
+    from winotify import Notification, audio as winotify_audio
+    _WINOTIFY_AVAILABLE = True
+except ImportError:
+    _WINOTIFY_AVAILABLE = False
+
 class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
         super().__init__()
         # Initialize DnDWrapper
         self.TkdndVersion = TkinterDnD._require(self)
         
-        self.title("Conversor de Vídeo para MP4 (Lote) - v1.4")
-        self.geometry("750x660")
-        self.resizable(False, False)
+        self.title("Conversor de Vídeo para MP4 (Lote) - v1.8")
+        # Inicia maximizado — mantém barra de título e taskbar do Windows
+        self.state("zoomed")
+        self.minsize(800, 600)
         
         # Load Window Icon
         icon_path = get_path("icon.ico", use_meipass=False)
@@ -40,6 +48,11 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         self.dest_folder = ctk.StringVar()
         self.same_folder_var = ctk.BooleanVar(value=True)
         self.ultra_fast_var = ctk.BooleanVar(value=True)
+        self.gallery_folder = ctk.StringVar()
+
+        # Flag: fila terminou enquanto o app estava em 2º plano
+        self._queue_finished_in_bg = False
+        self._app_focused = True
         
         # Register Drag and Drop target
         self.drop_target_register(DND_FILES)
@@ -50,6 +63,7 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         self._poll_gui_queue()
         
         self._build_ui()
+        self._bind_focus_events()
         
     def _build_ui(self):
         main_frame = ctk.CTkFrame(self)
@@ -112,8 +126,14 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         self.opt_quality.set("Média (Recomendada)")
         
         # Middle Frame: Scrollable queue list
-        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=210, label_text="Fila de Conversão (Arraste e solte arquivos aqui)")
-        self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.scroll_frame = ctk.CTkScrollableFrame(main_frame, height=200, label_text="Fila de Conversão (Arraste e solte arquivos aqui)")
+        self.scroll_frame.pack(fill="x", padx=10, pady=5)
+
+        # Separator
+        ctk.CTkFrame(main_frame, height=2, fg_color=("gray70", "gray30")).pack(fill="x", padx=10, pady=(4, 0))
+
+        # Gallery panel
+        self._build_gallery_panel(main_frame)
         
         # Bottom Frame: Status and Controls
         bottom_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -430,20 +450,32 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
         if has_completed:
             self.btn_open_folder.configure(state="normal")
             
-        # Play Windows notification sound in background thread to prevent GUI hangs
-        import threading
-        def play_beep():
-            try:
-                winsound.MessageBeep(winsound.MB_ICONASTERISK)
-            except Exception:
-                pass
-        threading.Thread(target=play_beep, daemon=True).start()
-            
         has_errors = any(item.status == "Erro" for item in self.queue_manager.items)
-        if has_errors:
-            self.lbl_status.configure(text=f"Conversão finalizada. {finished} de {total} processados.", text_color="#c0392b")
+        status_msg = (
+            f"Conversão finalizada. {finished} de {total} processados."
+            if has_errors
+            else "Fila finalizada com sucesso!"
+        )
+        status_color = "#c0392b" if has_errors else "#27ae60"
+
+        # Atualiza galeria com os novos MP4 gerados
+        self._refresh_gallery()
+
+        if self._app_focused:
+            # App em 1º plano: apenas feedback visual + som
+            import threading
+            def play_beep():
+                try:
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                except Exception:
+                    pass
+            threading.Thread(target=play_beep, daemon=True).start()
+            self.lbl_status.configure(text=status_msg, text_color=status_color)
         else:
-            self.lbl_status.configure(text="Fila finalizada com sucesso!", text_color="#27ae60")
+            # App em 2º plano: envia toast nativo e agenda atualização de status
+            self._send_toast_notification(has_errors, finished, total)
+            self._queue_finished_in_bg = True
+            self._pending_status = (status_msg, status_color)
             
     def _clear_all_queue(self):
         if self.queue_manager.is_running:
@@ -539,3 +571,196 @@ class ConverterGUI(ctk.CTk, TkinterDnD.DnDWrapper):
             self._show_error(f"Erro no download: {err_msg}")
             self.btn_download.configure(state="normal", text="Tentar Novamente")
         self.after(0, _handle)
+
+    # ── Detecção de foco (2º plano) ───────────────────────────────────────────
+
+    def _bind_focus_events(self):
+        self.bind("<FocusIn>", self._on_focus_in)
+        self.bind("<FocusOut>", self._on_focus_out)
+
+    def _on_focus_in(self, event=None):
+        self._app_focused = True
+        # Processa conclusão pendente que ocorreu em background
+        if self._queue_finished_in_bg:
+            self._queue_finished_in_bg = False
+            msg, color = getattr(self, "_pending_status", ("Fila finalizada com sucesso!", "#27ae60"))
+            self.lbl_status.configure(text=msg, text_color=color)
+
+    def _on_focus_out(self, event=None):
+        self._app_focused = False
+
+    def _send_toast_notification(self, has_errors: bool, finished: int, total: int):
+        """Dispara notificação nativa do Windows via winotify — falha silenciosa."""
+        if not _WINOTIFY_AVAILABLE:
+            return
+        try:
+            icon_path = get_path("icon.ico", use_meipass=False)
+            title = "Conversão concluída" if not has_errors else "Conversão finalizada com erros"
+            msg = (
+                f"{finished} de {total} arquivo(s) convertido(s) com sucesso!"
+                if not has_errors
+                else f"{finished} de {total} arquivo(s) processado(s). Verifique os erros."
+            )
+            toast = Notification(
+                app_id="Conversor de Vídeo para MP4",
+                title=title,
+                msg=msg,
+                icon=icon_path if os.path.exists(icon_path) else "",
+                duration="short",
+            )
+            toast.set_audio(winotify_audio.Default, loop=False)
+            toast.show()
+        except Exception:
+            pass
+
+    # ── Galeria de vídeos MP4 ─────────────────────────────────────────────────
+
+    def _build_gallery_panel(self, parent):
+        panel = ctk.CTkFrame(parent, fg_color="transparent")
+        panel.pack(fill="both", expand=True, padx=10, pady=(6, 0))
+
+        # Cabeçalho
+        header = ctk.CTkFrame(panel, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 4))
+
+        ctk.CTkLabel(
+            header,
+            text="Galeria de Vídeos MP4",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header, text="↺ Atualizar", width=90, height=26,
+            command=self._refresh_gallery,
+        ).pack(side="right")
+
+        # Seleção de pasta monitorada
+        folder_row = ctk.CTkFrame(panel, fg_color="transparent")
+        folder_row.pack(fill="x", pady=(0, 6))
+
+        ctk.CTkLabel(
+            folder_row, text="Pasta monitorada:",
+            font=ctk.CTkFont(size=11),
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkEntry(
+            folder_row, textvariable=self.gallery_folder,
+            state="disabled", width=380,
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            folder_row, text="Selecionar Pasta", width=130, height=26,
+            command=self._select_gallery_folder,
+        ).pack(side="left")
+
+        # Área scrollável para os cards
+        self.gallery_scroll = ctk.CTkScrollableFrame(
+            panel, label_text="", fg_color=("gray92", "gray15"),
+        )
+        self.gallery_scroll.pack(fill="both", expand=True)
+
+        self.lbl_gallery_empty = ctk.CTkLabel(
+            self.gallery_scroll,
+            text="Selecione uma pasta para ver os vídeos MP4.",
+            text_color="gray",
+            font=ctk.CTkFont(size=12),
+        )
+        self.lbl_gallery_empty.pack(pady=24)
+
+    def _select_gallery_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.gallery_folder.set(folder)
+            self._refresh_gallery()
+
+    def _refresh_gallery(self):
+        folder = self.gallery_folder.get()
+
+        # Auto-detecta pasta a partir dos itens concluídos se nenhuma foi selecionada
+        if not folder:
+            completed = next(
+                (it for it in self.queue_manager.items if it.status == "Concluído"),
+                None,
+            )
+            if completed:
+                folder = os.path.dirname(completed.output_path)
+                self.gallery_folder.set(folder)
+
+        for widget in self.gallery_scroll.winfo_children():
+            widget.destroy()
+
+        if not folder or not os.path.isdir(folder):
+            ctk.CTkLabel(
+                self.gallery_scroll,
+                text="Selecione uma pasta para ver os vídeos MP4.",
+                text_color="gray",
+                font=ctk.CTkFont(size=12),
+            ).pack(pady=24)
+            return
+
+        mp4_files = sorted(
+            [f for f in os.listdir(folder) if f.lower().endswith(".mp4")],
+            key=lambda f: os.path.getmtime(os.path.join(folder, f)),
+            reverse=True,
+        )
+
+        if not mp4_files:
+            ctk.CTkLabel(
+                self.gallery_scroll,
+                text="Nenhum arquivo .mp4 encontrado nesta pasta.",
+                text_color="gray",
+                font=ctk.CTkFont(size=12),
+            ).pack(pady=24)
+            return
+
+        for filename in mp4_files:
+            self._create_video_card(os.path.join(folder, filename), filename)
+
+    def _create_video_card(self, full_path: str, filename: str):
+        card = ctk.CTkFrame(self.gallery_scroll, corner_radius=6)
+        card.pack(fill="x", padx=6, pady=3)
+
+        ctk.CTkLabel(
+            card, text="🎬", font=ctk.CTkFont(size=20),
+        ).pack(side="left", padx=(10, 6), pady=8)
+
+        info = ctk.CTkFrame(card, fg_color="transparent")
+        info.pack(side="left", fill="both", expand=True, pady=6)
+
+        ctk.CTkLabel(
+            info, text=filename,
+            font=ctk.CTkFont(size=12, weight="bold"), anchor="w",
+        ).pack(anchor="w")
+
+        size_str = self._format_file_size(full_path)
+        ctk.CTkLabel(
+            info, text=f"{size_str}  •  {full_path}",
+            text_color="gray", font=ctk.CTkFont(size=10), anchor="w",
+        ).pack(anchor="w")
+
+        btns = ctk.CTkFrame(card, fg_color="transparent")
+        btns.pack(side="right", padx=10, pady=8)
+
+        ctk.CTkButton(
+            btns, text="▶ Reproduzir", width=100, height=26,
+            command=lambda p=full_path: os.startfile(p),
+            fg_color="#2980b9", hover_color="#3498db",
+        ).pack(side="left", padx=(0, 5))
+
+        ctk.CTkButton(
+            btns, text="📁 Pasta", width=80, height=26,
+            command=lambda p=os.path.dirname(full_path): os.startfile(p),
+            fg_color=("gray60", "gray35"), hover_color=("gray50", "gray45"),
+        ).pack(side="left")
+
+    @staticmethod
+    def _format_file_size(path: str) -> str:
+        try:
+            size = os.path.getsize(path)
+            for unit in ("B", "KB", "MB", "GB"):
+                if size < 1024:
+                    return f"{size:.1f} {unit}"
+                size /= 1024
+            return f"{size:.1f} TB"
+        except OSError:
+            return "—"

@@ -10,9 +10,12 @@ customtkinter_path = os.path.dirname(customtkinter.__file__)
 # Collect data, binaries, and hidden imports for tkinterdnd2
 t_datas, t_binaries, t_hiddenimports = collect_all('tkinterdnd2')
 
-datas = [(customtkinter_path, 'customtkinter/')] + t_datas
-binaries = t_binaries
-hiddenimports = t_hiddenimports
+# Collect winotify for Windows toast notifications
+w_datas, w_binaries, w_hiddenimports = collect_all('winotify')
+
+datas = [(customtkinter_path, 'customtkinter/')] + t_datas + w_datas
+binaries = t_binaries + w_binaries
+hiddenimports = t_hiddenimports + w_hiddenimports
 
 if os.path.exists(os.path.join(spec_dir, 'ffmpeg.exe')):
     datas.append(('ffmpeg.exe', '.'))
